@@ -20,7 +20,7 @@ Stop remembering whether a thing is managed by **Docker**, **systemd**, **PM2**
 or **launchd**. Just talk to `gyver`:
 
 ```bash
-gyver list
+gyver services
 gyver logs adguard
 gyver restart caddy
 gyver ports
@@ -38,7 +38,7 @@ MVP. Supported today:
 
 | Command          | What it does                                                            |
 | ---------------- | ---------------------------------------------------------------------- |
-| `gyver list`     | Unified table of containers + units (TUI or `--plain`); filter with `--all`/`--running`/`--type`. |
+| `gyver services` | Unified table of containers + units (TUI or `--plain`); filter with `--all`/`--running`/`--type`. |
 | `gyver logs`     | Recent logs via `docker logs` / `journalctl -u`.                       |
 | `gyver restart`  | Restart with confirmation via `docker restart` / `systemctl restart`.  |
 | `gyver ports`    | Listening ports via `ss` (Linux) or `lsof` (macOS / fallback).         |
@@ -64,17 +64,25 @@ make install-local # -> ~/.local/bin/gyver  (make sure it's on your PATH)
 Or run without installing:
 
 ```bash
-make run ARGS="list --plain"
+make run ARGS="services --plain"
 ```
 
 ## Usage
 
-### `gyver list`
+### `gyver services`
 
-Interactive Bubble Tea table by default; `↑/↓` (or `j/k`) to move, `q` to quit.
+Interactive Bubble Tea table by default:
+
+| Key            | Action                                                            |
+| -------------- | ----------------------------------------------------------------- |
+| `↑`/`↓`, `j`/`k` | Move the selection.                                             |
+| `/`            | Search — type to filter by name/type/status/ports; `enter` keeps the filter, `esc` clears it. |
+| `l`            | Show logs for the selected service (closes the table, like `gyver logs <name>`). |
+| `r`            | Restart the selected service (closes the table and asks for confirmation). |
+| `q`            | Quit.                                                             |
 
 ```bash
-gyver list
+gyver services
 ```
 
 Internal systemd units (`systemd-*` — journald, udevd, logind, …) are **hidden
@@ -82,22 +90,22 @@ by default**; gyver prints a one-line note on stderr saying how many were
 suppressed. Flags let you slice the list:
 
 ```bash
-gyver list --all          # -a: include the hidden internal systemd-* units
-gyver list --running      # -r: only services that are actively running
-gyver list --type docker  # -t: only one adapter (repeatable: --type docker --type systemd)
-gyver list -r -t systemd  # combine freely
+gyver services --all          # -a: include the hidden internal systemd-* units
+gyver services --running      # -r: only services that are actively running
+gyver services --type docker  # -t: only one adapter (repeatable: --type docker --type systemd)
+gyver services -r -t systemd  # combine freely
 ```
 
 Script-friendly output for pipes and `grep`:
 
 ```bash
-gyver list --plain
+gyver services --plain
 # TYPE     NAME      ID            STATUS           PORTS
 # docker   adguard   3f9a1c2b7d8e  Up 2 hours       0.0.0.0:3000->3000/tcp
 # systemd  caddy     caddy         active (running) -
 ```
 
-> `gyver list` automatically falls back to plain text when stdout is not a
+> `gyver services` automatically falls back to plain text when stdout is not a
 > terminal, so piping always works even without `--plain`. The "N internal
 > units hidden" note goes to stderr, so it never pollutes a piped list.
 
@@ -247,7 +255,7 @@ internal/adapters/systemd/systemd.go # systemd adapter (systemctl/journalctl)
 internal/commands/                 # one file per Cobra subcommand
   ├─ root.go      # command wiring
   ├─ adapters.go  # adapter registry + service lookup helpers
-  ├─ list.go logs.go restart.go ports.go how.go alias.go
+  ├─ services.go logs.go restart.go ports.go how.go alias.go
 internal/tui/list.go               # Bubble Tea + Lip Gloss table
 internal/recipes/recipes.go        # `how` Provider interface + offline recipe matcher
 internal/recipes/anthropic.go      # `how` Claude-backed Provider (Anthropic Go SDK)
@@ -271,7 +279,7 @@ type Adapter interface {
 1. Create `internal/adapters/<name>/<name>.go` implementing `core.Adapter`.
 2. Register it in `allAdapters()` in `internal/commands/adapters.go`.
 
-That's it — `list`, `logs`, `restart` and name-matching pick it up for free.
+That's it — `services`, `logs`, `restart` and name-matching pick it up for free.
 
 ## Design notes
 

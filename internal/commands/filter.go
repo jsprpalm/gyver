@@ -4,13 +4,14 @@ import (
 	"strings"
 
 	"github.com/jsprpalm/gyver/internal/core"
+	"github.com/jsprpalm/gyver/internal/tui"
 )
 
-// listFilter describes how `gyver list` narrows the unified service list.
+// listFilter describes how `gyver services` narrows the unified service list.
 type listFilter struct {
 	types   []string // restrict to these adapter types; empty means all
-	running bool      // only services that are actively running
-	all     bool      // include internal units that are hidden by default
+	running bool     // only services that are actively running
+	all     bool     // include internal units that are hidden by default
 }
 
 // filterServices applies f to services and returns the surviving services plus
@@ -19,19 +20,48 @@ type listFilter struct {
 // count lets the caller transparently report what was suppressed.
 func filterServices(services []core.Service, f listFilter) (kept []core.Service, hiddenInternal int) {
 	for _, s := range services {
-		if len(f.types) > 0 && !containsFold(f.types, s.Type) {
-			continue
-		}
-		if f.running && !isRunning(s) {
-			continue
-		}
-		if !f.all && isInternal(s) {
+		keep, hidden := keepService(s, f)
+		if hidden {
 			hiddenInternal++
-			continue
 		}
-		kept = append(kept, s)
+		if keep {
+			kept = append(kept, s)
+		}
 	}
 	return kept, hiddenInternal
+}
+
+// filterItems is the item-carrying counterpart of filterServices: it applies
+// the same rules but preserves the adapter paired with each service so the TUI
+// can act on a selection.
+func filterItems(items []tui.Item, f listFilter) (kept []tui.Item, hiddenInternal int) {
+	for _, it := range items {
+		keep, hidden := keepService(it.Service, f)
+		if hidden {
+			hiddenInternal++
+		}
+		if keep {
+			kept = append(kept, it)
+		}
+	}
+	return kept, hiddenInternal
+}
+
+// keepService decides a single service against the filter. hiddenInternal is
+// true only when the service was dropped *purely* by the default "hide
+// internals" rule (i.e. the user would otherwise have seen it), so callers can
+// transparently report what was suppressed.
+func keepService(s core.Service, f listFilter) (keep, hiddenInternal bool) {
+	if len(f.types) > 0 && !containsFold(f.types, s.Type) {
+		return false, false
+	}
+	if f.running && !isRunning(s) {
+		return false, false
+	}
+	if !f.all && isInternal(s) {
+		return false, true
+	}
+	return true, false
 }
 
 // isInternal reports whether a service is part of the init system's own

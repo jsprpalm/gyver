@@ -11,6 +11,7 @@ import (
 
 	"github.com/jsprpalm/gyver/internal/aliases"
 	"github.com/jsprpalm/gyver/internal/recipes"
+	"github.com/jsprpalm/gyver/internal/tui"
 )
 
 var (
@@ -37,6 +38,10 @@ func newHowCmd() *cobra.Command {
 
 			s, err := suggest(cmd, question, local)
 			if err != nil {
+				if errors.Is(err, tui.ErrCanceled) {
+					fmt.Fprintln(cmd.ErrOrStderr(), "gyver: canceled")
+					return nil
+				}
 				return err
 			}
 
@@ -101,8 +106,14 @@ func suggest(cmd *cobra.Command, question string, local bool) (recipes.Suggestio
 		return localProvider.Suggest(context.Background(), question)
 	}
 
-	s, err := ai.Suggest(context.Background(), question)
+	s, err := tui.RunWithSpinner("asking Claude…", func(ctx context.Context) (recipes.Suggestion, error) {
+		return ai.Suggest(ctx, question)
+	})
 	if err != nil {
+		// The user aborted — don't quietly fall back, let the caller exit.
+		if errors.Is(err, tui.ErrCanceled) {
+			return recipes.Suggestion{}, err
+		}
 		fmt.Fprintf(cmd.ErrOrStderr(),
 			"gyver: AI lookup failed (%v); falling back to offline recipes\n", err)
 		return localProvider.Suggest(context.Background(), question)

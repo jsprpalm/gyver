@@ -14,7 +14,7 @@ import (
 	"github.com/jsprpalm/gyver/internal/tui"
 )
 
-func newListCmd() *cobra.Command {
+func newServicesCmd() *cobra.Command {
 	var (
 		plain   bool
 		all     bool
@@ -23,7 +23,7 @@ func newListCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "list",
+		Use:   "services",
 		Short: "List all services and containers in one unified view",
 		Long: "List services and containers from every available adapter.\n\n" +
 			"Internal systemd units (systemd-*) are hidden by default; pass --all\n" +
@@ -32,9 +32,9 @@ func newListCmd() *cobra.Command {
 			ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
 			defer cancel()
 
-			services := gatherServices(ctx)
+			items := gatherItems(ctx)
 
-			filtered, hiddenInternal := filterServices(services, listFilter{
+			filtered, hiddenInternal := filterItems(items, listFilter{
 				types:   types,
 				running: running,
 				all:     all,
@@ -54,9 +54,17 @@ func newListCmd() *cobra.Command {
 
 			// Plain output, or a non-interactive terminal, prints script-friendly text.
 			if plain || !isInteractive() {
-				return printPlain(filtered)
+				return printPlain(servicesOf(filtered))
 			}
-			return tui.Run(filtered)
+
+			result, err := tui.Run(filtered)
+			if err != nil {
+				return err
+			}
+			// The table blocks for as long as the user keeps it open, so the 10s
+			// listing context above is long gone — run any chosen action against
+			// a fresh one derived from the command's parent context.
+			return runSelected(cmd.Context(), result)
 		},
 	}
 
@@ -65,6 +73,34 @@ func newListCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&running, "running", "r", false, "only show services that are actively running")
 	cmd.Flags().StringSliceVarP(&types, "type", "t", nil, "only show these adapter types (e.g. --type docker)")
 	return cmd
+}
+
+// servicesOf drops the adapter pairing for paths (like --plain) that only need
+// the bare services.
+func servicesOf(items []tui.Item) []core.Service {
+	out := make([]core.Service, len(items))
+	for i, it := range items {
+		out[i] = it.Service
+	}
+	return out
+}
+
+// runSelected carries out the action the user picked in the table, if any. The
+// table has been torn down by now, so logs print and the restart confirmation
+// prompt run in the normal terminal exactly like the standalone subcommands.
+func runSelected(parent context.Context, r tui.Result) error {
+	switch r.Action {
+	case tui.ActionLogs:
+		ctx, cancel := context.WithTimeout(parent, 30*time.Second)
+		defer cancel()
+		return runLogs(ctx, r.Item.Adapter, r.Item.Service)
+	case tui.ActionRestart:
+		ctx, cancel := context.WithTimeout(parent, 60*time.Second)
+		defer cancel()
+		return runRestart(ctx, r.Item.Adapter, r.Item.Service, false)
+	default:
+		return nil
+	}
 }
 
 func printPlain(services []core.Service) error {
@@ -81,7 +117,7 @@ func printPlain(services []core.Service) error {
 }
 
 // isInteractive reports whether stdout is a terminal. When piped or redirected
-// we fall back to plain text so `gyver list | grep …` just works.
+// we fall back to plain text so `gyver services | grep …` just works.
 func isInteractive() bool {
 	fi, err := os.Stdout.Stat()
 	if err != nil {
