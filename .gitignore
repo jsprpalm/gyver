@@ -1,0 +1,7 @@
+/bin/
+/gyver
+*.out
+.DS_Store
+
+# Local, machine-specific Claude Code settings (keep out of the public repo)
+.claude/settings.local.json
