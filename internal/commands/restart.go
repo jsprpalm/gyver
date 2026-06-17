@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/jsprpalm/gyver/internal/core"
 )
 
 func newRestartCmd() *cobra.Command {
@@ -26,30 +28,36 @@ func newRestartCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-
-			if !yes {
-				ok, err := confirm(fmt.Sprintf(
-					"Restart %s service %q (%s)?", adapter.Name(), service.Name, service.ID))
-				if err != nil {
-					return err
-				}
-				if !ok {
-					fmt.Println("aborted")
-					return nil
-				}
-			}
-
-			fmt.Printf("Restarting %s…\n", service.Name)
-			if err := adapter.Restart(ctx, service); err != nil {
-				return err
-			}
-			fmt.Printf("Restarted %s\n", service.Name)
-			return nil
+			return runRestart(ctx, adapter, service, yes)
 		},
 	}
 
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return cmd
+}
+
+// runRestart restarts a service, asking for confirmation unless skipConfirm is
+// set. Shared by the `restart` subcommand and the `r` action in the services
+// table.
+func runRestart(ctx context.Context, adapter core.Adapter, service core.Service, skipConfirm bool) error {
+	if !skipConfirm {
+		ok, err := confirm(fmt.Sprintf(
+			"Restart %s service %q (%s)?", adapter.Name(), service.Name, service.ID))
+		if err != nil {
+			return err
+		}
+		if !ok {
+			fmt.Println("aborted")
+			return nil
+		}
+	}
+
+	fmt.Printf("Restarting %s…\n", service.Name)
+	if err := adapter.Restart(ctx, service); err != nil {
+		return err
+	}
+	fmt.Printf("Restarted %s\n", service.Name)
+	return nil
 }
 
 // confirm prompts the user on stdin for a yes/no answer, defaulting to no.

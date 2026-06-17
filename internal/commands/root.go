@@ -20,7 +20,7 @@ func newRootCmd() *cobra.Command {
 	}
 
 	root.AddCommand(
-		newListCmd(),
+		newServicesCmd(),
 		newLogsCmd(),
 		newRestartCmd(),
 		newPortsCmd(),
